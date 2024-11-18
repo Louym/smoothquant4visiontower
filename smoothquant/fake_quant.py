@@ -192,41 +192,73 @@ def quantize_llama_like(
         MistralAttention,
         MistralMLP,
     )
-
-    for name, m in model.model.named_modules():
-        if isinstance(m, (LlamaMLP, MistralMLP)):
-            m.gate_proj = W8A8Linear.from_float(
-                m.gate_proj, weight_quant=weight_quant, act_quant=act_quant
-            )
-            m.up_proj = W8A8Linear.from_float(
-                m.up_proj, weight_quant=weight_quant, act_quant=act_quant
-            )
-            m.down_proj = W8A8Linear.from_float(
-                m.down_proj, weight_quant=weight_quant, act_quant=act_quant
-            )
-        elif isinstance(m, (LlamaAttention, MistralAttention)):
-            # Her we simulate quantizing BMM inputs by quantizing the output of q_proj, k_proj, v_proj
-            m.q_proj = W8A8Linear.from_float(
-                m.q_proj,
-                weight_quant=weight_quant,
-                act_quant=act_quant,
-                quantize_output=quantize_bmm_input,
-            )
-            m.k_proj = W8A8Linear.from_float(
-                m.k_proj,
-                weight_quant=weight_quant,
-                act_quant=act_quant,
-                quantize_output=quantize_bmm_input,
-            )
-            m.v_proj = W8A8Linear.from_float(
-                m.v_proj,
-                weight_quant=weight_quant,
-                act_quant=act_quant,
-                quantize_output=quantize_bmm_input,
-            )
-            m.o_proj = W8A8Linear.from_float(
-                m.o_proj, weight_quant=weight_quant, act_quant=act_quant
-            )
+    if "siglip" in str(model.__class__).lower():
+        for name, m in model.named_modules():
+            if "mlp" in str(m.__class__).lower():
+                m.fc1 = W8A8Linear.from_float(
+                    m.fc1, weight_quant=weight_quant, act_quant=act_quant
+                )
+                m.fc2 = W8A8Linear.from_float(
+                    m.fc2, weight_quant=weight_quant, act_quant=act_quant
+                )
+            elif "attention" in str(m.__class__).lower():
+                # Her we simulate quantizing BMM inputs by quantizing the output of q_proj, k_proj, v_proj
+                m.q_proj = W8A8Linear.from_float(
+                    m.q_proj,
+                    weight_quant=weight_quant,
+                    act_quant=act_quant,
+                    quantize_output=quantize_bmm_input,
+                )
+                m.k_proj = W8A8Linear.from_float(
+                    m.k_proj,
+                    weight_quant=weight_quant,
+                    act_quant=act_quant,
+                    quantize_output=quantize_bmm_input,
+                )
+                m.v_proj = W8A8Linear.from_float(
+                    m.v_proj,
+                    weight_quant=weight_quant,
+                    act_quant=act_quant,
+                    quantize_output=quantize_bmm_input,
+                )
+                m.out_proj = W8A8Linear.from_float(
+                    m.out_proj, weight_quant=weight_quant, act_quant=act_quant
+                )
+    else:
+        for name, m in model.model.named_modules():
+            if isinstance(m, (LlamaMLP, MistralMLP)):
+                m.gate_proj = W8A8Linear.from_float(
+                    m.gate_proj, weight_quant=weight_quant, act_quant=act_quant
+                )
+                m.up_proj = W8A8Linear.from_float(
+                    m.up_proj, weight_quant=weight_quant, act_quant=act_quant
+                )
+                m.down_proj = W8A8Linear.from_float(
+                    m.down_proj, weight_quant=weight_quant, act_quant=act_quant
+                )
+            elif isinstance(m, (LlamaAttention, MistralAttention)):
+                # Her we simulate quantizing BMM inputs by quantizing the output of q_proj, k_proj, v_proj
+                m.q_proj = W8A8Linear.from_float(
+                    m.q_proj,
+                    weight_quant=weight_quant,
+                    act_quant=act_quant,
+                    quantize_output=quantize_bmm_input,
+                )
+                m.k_proj = W8A8Linear.from_float(
+                    m.k_proj,
+                    weight_quant=weight_quant,
+                    act_quant=act_quant,
+                    quantize_output=quantize_bmm_input,
+                )
+                m.v_proj = W8A8Linear.from_float(
+                    m.v_proj,
+                    weight_quant=weight_quant,
+                    act_quant=act_quant,
+                    quantize_output=quantize_bmm_input,
+                )
+                m.o_proj = W8A8Linear.from_float(
+                    m.o_proj, weight_quant=weight_quant, act_quant=act_quant
+                )
     return model
 
 

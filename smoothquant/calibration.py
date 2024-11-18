@@ -10,9 +10,9 @@ import numpy as np
 from tqdm import tqdm
 
 
-def get_act_scales(model, tokenizer, dataset_path, num_samples=512, seq_len=512):
+def get_act_scales(model, data):
+    num_samples=data.shape[0]
     model.eval()
-    device = next(model.parameters()).device
     act_scales = {}
 
     def stat_tensor(name, tensor):
@@ -36,14 +36,10 @@ def get_act_scales(model, tokenizer, dataset_path, num_samples=512, seq_len=512)
                 m.register_forward_hook(functools.partial(stat_input_hook, name=name))
             )
 
-    dataset = load_dataset("json", data_files=dataset_path, split="train")
-    dataset = dataset.shuffle(seed=42)
 
     for i in tqdm(range(num_samples)):
-        input_ids = tokenizer(
-            dataset[i]["text"], return_tensors="pt", max_length=seq_len, truncation=True
-        ).input_ids.to(device)
-        model(input_ids)
+        input = data[i:i+1]
+        model(input)
 
     for h in hooks:
         h.remove()
@@ -54,17 +50,16 @@ def get_act_scales(model, tokenizer, dataset_path, num_samples=512, seq_len=512)
 @torch.no_grad()
 def get_static_decoder_layer_scales(
     model,
-    tokenizer,
-    dataset_path,
-    num_samples=512,
-    seq_len=512,
+    data,
 ):
+    num_samples=data.shape[1]
     model.eval()
     device = next(model.parameters()).device
 
     act_dict = defaultdict(dict)
 
     def stat_io_hook(m, x, y, name):
+        print(name)
         if isinstance(x, tuple):
             x = x[0]
         if name not in act_dict or "input" not in act_dict[name]:
@@ -81,49 +76,44 @@ def get_static_decoder_layer_scales(
             act_dict[name]["output"] = max(
                 act_dict[name]["output"], y.detach().abs().max().item()
             )
-
+        print(max(x.detach().abs().max())/min(x.detach().abs().min()))
+        print(max(y.detach().abs().max())/min(y.detach().abs().min()))
     hooks = []
     for name, m in model.named_modules():
         if isinstance(m, torch.nn.Linear):
             hooks.append(m.register_forward_hook(partial(stat_io_hook, name=name)))
-
+    print(len(hooks))
     print("Collecting activation scales...")
     pbar = tqdm(range(num_samples))
-    dataset = load_dataset("json", data_files=dataset_path, split="train")
-    dataset = dataset.shuffle(seed=42)
     for i in pbar:
-        input_ids = tokenizer(
-            dataset[i]["text"], return_tensors="pt", max_length=seq_len, truncation=True
-        ).input_ids.to(device)
-        model(input_ids)
+        model(data[i:i+1])
         mean_scale = np.mean([v["input"] for v in act_dict.values()])
         pbar.set_description(f"Mean input scale: {mean_scale:.2f}")
     for hook in hooks:
         hook.remove()
-
     decoder_layer_scales = []
     for idx in range(model.config.num_hidden_layers):
         scale_dict = {}
         scale_dict["attn_input_scale"] = (
-            act_dict[f"model.decoder.layers.{idx}.self_attn.q_proj"]["input"] / 127
+            act_dict[f"vision_tower.vision_model.encoder.layers.{idx}.self_attn.q_proj"]["input"] / 127
         )
         scale_dict["q_output_scale"] = (
-            act_dict[f"model.decoder.layers.{idx}.self_attn.q_proj"]["output"] / 127
+            act_dict[f"vision_tower.vision_model.encoder.layers.{idx}.self_attn.q_proj"]["output"] / 127
         )
         scale_dict["k_output_scale"] = (
-            act_dict[f"model.decoder.layers.{idx}.self_attn.k_proj"]["output"] / 127
+            act_dict[f"vision_tower.vision_model.encoder.layers.{idx}.self_attn.k_proj"]["output"] / 127
         )
         scale_dict["v_output_scale"] = (
-            act_dict[f"model.decoder.layers.{idx}.self_attn.v_proj"]["output"] / 127
+            act_dict[f"vision_tower.vision_model.encoder.layers.{idx}.self_attn.v_proj"]["output"] / 127
         )
         scale_dict["out_input_scale"] = (
-            act_dict[f"model.decoder.layers.{idx}.self_attn.out_proj"]["input"] / 127
+            act_dict[f"vision_tower.vision_model.encoder.layers.{idx}.self_attn.out_proj"]["input"] / 127
         )
         scale_dict["fc1_input_scale"] = (
-            act_dict[f"model.decoder.layers.{idx}.fc1"]["input"] / 127
+            act_dict[f"vision_tower.vision_model.encoder.layers.{idx}.mlp.fc1"]["input"] / 127
         )
         scale_dict["fc2_input_scale"] = (
-            act_dict[f"model.decoder.layers.{idx}.fc2"]["input"] / 127
+            act_dict[f"vision_tower.vision_model.encoder.layers.{idx}.mlp.fc2"]["input"] / 127
         )
         decoder_layer_scales.append(scale_dict)
 

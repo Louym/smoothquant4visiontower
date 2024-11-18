@@ -158,3 +158,20 @@ def smooth_lm(model, scales, alpha=0.5):
             fcs_input_scales = scales[name + ".block_sparse_moe.gate"]
 
             smooth_ln_fcs_llama_like(ffn_ln, fcs, fcs_input_scales, alpha)
+    if "siglip" in str(model.__class__).lower():
+        for name, module in model.named_modules():
+            if "siglipencoderlayer" in str(module.__class__).lower():
+                attn_ln = module.layer_norm1
+                qkv = [
+                    module.self_attn.q_proj,
+                    module.self_attn.k_proj,
+                    module.self_attn.v_proj,
+                ]
+                qkv_input_scales = scales[name + ".self_attn.q_proj"]
+                smooth_ln_fcs(attn_ln, qkv, qkv_input_scales, alpha)
+
+                ffn_ln = module.layer_norm2
+                fc1 = module.mlp.fc1
+                fc1_input_scales = scales[name + ".mlp.fc1"]
+                smooth_ln_fcs(ffn_ln, fc1, fc1_input_scales, alpha)
+
